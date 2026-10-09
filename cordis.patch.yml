@@ -1,0 +1,7 @@
+# dsh-account-glance bundle patch: inserts its plugin row into the web plugin roster.
+# This is the shape used when the package is installed as a bundle
+# (`dsh.profile.bundles`); a hand-rolled profile install adds the same row to the
+# profile's own cordis.patch.yml instead.
+- insert:
+    - id: account-glance
+      name: dsh-account-glance

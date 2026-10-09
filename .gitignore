@@ -1,0 +1,15 @@
+# Node
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Local scratch
+*.local
+_backup_*/

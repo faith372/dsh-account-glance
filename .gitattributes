@@ -1,0 +1,7 @@
+# Keep one line-ending contract in the repository and on every checkout:
+# LF in the object store, LF in the working tree (JS/YAML/Markdown sources only).
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
