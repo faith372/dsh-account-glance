@@ -19,10 +19,10 @@ no daylight saving):
 
 The countdown switches to seconds for the final minute.
 
-The **manual refresh** button in the bottom-right corner forces one fresh probe cycle on the dsh-usage
-host (`POST api/dsh-usage/refresh`) instead of re-reading its cached snapshot, so the number it shows
-was just fetched. The button spins and disables while the read is in flight, and stays still under
-`prefers-reduced-motion`. It does not change the regular 60-second cadence.
+The **manual refresh** button in the bottom-right corner forces one fresh probe cycle on this plugin's
+own host half (`POST api/dsh-account-glance/refresh`) instead of re-reading its cached snapshot, so the
+number it shows was just fetched. The button spins and disables while the read is in flight, and stays
+still under `prefers-reduced-motion`. It does not change the regular 60-second cadence.
 
 ## Turning it on and off
 
@@ -57,15 +57,19 @@ leaving the card on the row directly above the account row.
 (`[data-dsh-plugin="usage"][data-dsh-part="foot-card"]`) so the two do not stack; dsh-usage's **settings
 page and usage ledger are fully preserved**, and this card reads from its `api/dsh-usage/overview`.
 
-The host half is a no-op: this is a pure browser-side surface. It adds no host route and reads no credential.
+The host half owns both data sources: it folds session events into the usage ledger, probes the DeepSeek
+balance with the host-held credential (which never reaches the browser), and serves them on two
+loopback-only routes (`api/dsh-account-glance/overview` and `.../refresh`). See
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) for the parts adapted from `@linxin666/dsh-usage`.
 
 ## Balance source and degradation
 
-The balance's **primary source is dsh-usage's official provider probe** (the `/user/balance` result for
-the `deepseek-official` route, resolved in the Host so the credential never reaches the browser). Only
-when that probe carries no balance does the card fall back to the existing `account` Remote namespace
-(`@deepseek-ai/dsh-api-account-controller`, the same call the Settings → Account & balance page makes) —
-so a signed-in-only setup still reads a number.
+The balance's **primary source is this plugin's own host probe**: the host half resolves the DeepSeek
+API key from the DSH credential store, calls `GET https://api.deepseek.com/user/balance`, and serves the
+result on `api/dsh-account-glance/overview`. The key stays in the host process and never reaches the
+browser. Only when that probe carries no balance does the card fall back to the existing `account` Remote
+namespace (`@deepseek-ai/dsh-api-account-controller`, the same call the Settings → Account & balance page
+makes) — so a signed-in-only setup still reads a number.
 
 | Situation | Display |
 | --- | --- |
@@ -73,20 +77,28 @@ so a signed-in-only setup still reads a number.
 | No probe, `account` endpoint available | The wallet balance; hover names the Settings → Account & balance endpoint |
 | No probe and signed out | `未登录` / `Not signed in` |
 | Neither source available | `读取失败` / `Unavailable` (the tooltip carries the reason) |
-| dsh-usage disabled (404) or failing | Line 3 shows "today's usage unavailable"; with no probe either, the `account` fallback takes over |
+| No host half at all (404) | Line 3 shows "today's usage unavailable" (its tooltip explains); the `account` fallback takes over the headline |
 
-The whole card runs on **one 60-second cadence**: the probe value rides along inside the overview, a local
-host snapshot, so the headline and the ledger line always describe the same read. Polling pauses while the
-tab is hidden. When a probe value exists, the `account` endpoint is **never called** — not one extra round
-trip.
+The whole card runs on **one 60-second cadence**: the balance probe rides along inside the overview, a
+local host snapshot, so the headline and the ledger line always describe the same read. Polling pauses
+while the tab is hidden. When a probe value exists, the `account` endpoint is **never called** — not one
+extra round trip.
+
+### Today's ledger
+
+Line 3 is computed in the host half too. It subscribes to the session event stream (`session/event`) and
+folds every `assistant/message` that carries a `usage` report into a small per-day ledger, keyed by
+**Beijing date** so a day and its billing column can never disagree. Only DeepSeek official routes are
+priced (CNY per million tokens, peak / off-peak table in `lib/host/pricing.js`); every other route still
+counts its tokens and calls with cost 0, so a mixed ledger never sums two currencies. The ledger lives at
+`<DSH_HOME>/account-glance/ledger.json` (atomic write, 3-second debounce, 180-day retention).
 
 ### Does probing cost credit?
 
-**No.** The balance probe is `GET https://api.deepseek.com/user/balance` (see dsh-usage's
-`core/adapters.ts`) — a read-only account query. It carries no prompt, produces no tokens, and bills
-nothing. dsh-usage only ever calls balance / quota query endpoints; there is no inference endpoint anywhere
-in its source. The product's own onboarding copy says the same: your balance is only consumed when an Agent
-actually runs a task.
+**No.** The balance probe is `GET https://api.deepseek.com/user/balance` (see `lib/host/probe.js`) — a
+read-only account query. It carries no prompt, produces no tokens, and bills nothing. The plugin only ever
+calls that one balance endpoint; there is no inference endpoint anywhere in it. The product's own
+onboarding copy says the same: your balance is only consumed when an Agent actually runs a task.
 
 The only real cost is the HTTP request itself (and a very small chance of rate limiting), so the cadence
 does not need to be tight.
@@ -107,10 +119,12 @@ headline to "loading" forever.
 ## Requirements
 
 - **DSH 0.2.0-rc.1 or newer** (`dsh.engines.dsh`).
-- The probe value and today's totals come from **`@linxin666/dsh-usage`**. Without it the plugin still
-  works: line 3 shows "today's usage unavailable" and the balance falls back to the `account` endpoint.
+- **No other plugin is required.** Both the balance probe and the usage ledger live in this plugin's own
+  host half. `@linxin666/dsh-usage` is optional: install it and nothing breaks — this card still reads its
+  own host route first, dsh-usage's glance card stays hidden, and its settings / usage pages keep working.
 - The browser half's only runtime external is **`react`**, provided by DSH's frozen platform module table.
-  There is **no build step** — `lib/client.js` is the shipped artifact, so a clone is ready to use.
+  The host half imports nothing outside Node's standard library. There is **no build step** — `lib/client.js`
+  is the shipped artifact, so a clone is ready to use.
 
 ## Installation
 
@@ -142,8 +156,15 @@ Installing by hand is the same three steps:
 Do **not** also insert `account-glance` into the profile's `cordis.patch.yml` by hand: this package ships
 its own `cordis.patch.yml` for that row, and inserting it twice would register the same id twice.
 
-Bundle selection is **hot-applied** (`set_bundle` reports `application: "applied"`); restarting dsh is not
-required.
+Bundle selection is **hot-applied** (`set_bundle` reports `application: "applied"`), and a settings change
+needs no restart.
+
+### Upgrading from 1.3.x
+
+1.4.0 adds the host half, so the plugin row has to remount once before it can serve anything: restart DSH,
+or toggle this row off and on in the Plugins page, then refresh the page for the new client bundle. Until
+that happens the card falls back to `@linxin666/dsh-usage`'s overview when that plugin is installed, and
+line 3 reads "today's usage unavailable" — with a hover that says so — when it is not.
 
 ### After changing `lib/client.js`
 
@@ -177,13 +198,17 @@ All of them live at the top of `lib/client.js`:
 | `USAGE_OVERVIEW_PATH` | `api/dsh-usage/overview` | Source of the usage line and the probe value |
 | `PEAK_WINDOWS` | weekdays `09:00–12:00`, `14:00–18:00` | Peak windows in Beijing-time minutes |
 
+The host half has its own constants: `DEFAULT_POLL_SEC` (60) and `DEFAULT_RETAIN_DAYS` (180) at the top of
+`lib/host/service.js`, and `PROBE_TIMEOUT_MS` (10 000) in `lib/host/probe.js`. They are constants on
+purpose — this plugin ships no settings page, so nothing has to be recomputed or remounted on a save.
+
 ## Verification
 
 ```bash
-node test/verify.mjs
+npm test          # or: node test/verify.mjs && node test/host-verify.mjs
 ```
 
-The script executes the **shipped artifact**, `lib/client.js`, against minimal React / DOM stand-ins, and
+The browser script executes the **shipped artifact**, `lib/client.js`, against minimal React / DOM stand-ins, and
 covers:
 
 - the bundle registers one factory under its package name, with `react` as its only external;
@@ -202,12 +227,38 @@ covers:
 - degradation paths: signed out, missing service, throwing read, usage 404/500, an empty day, a decimal
   string `cost`, and an English UI.
 
+`test/host-verify.mjs` covers the host half the same way — no network, no running DSH:
+
+- the peak / off-peak clock across window boundaries, weekends and the Monday-morning gap, plus the
+  Beijing day keys the ledger uses;
+- the price book (flash and folded-in pro rows) and the fold-time cost stamping;
+- the ledger: fold, summary, retention pruning, JSON revival of untrusted documents, and the
+  prototype-key guard;
+- credentials (pi-ai record → configured env reference → none, and the ambient-env fallback) and the
+  probe itself: endpoint, bearer header, `accept-encoding: identity`, 401 / empty / malformed bodies;
+- the foreign-origin guard: a route pointed at a reseller is reported as unsupported instead of being
+  probed with the official endpoint;
+- session-event folding into today's totals, priced per billing column, with foreign routes counting
+  usage at cost 0 and unattributed or malformed events dropped;
+- the route trust fence (loopback and paired-device 200, LAN 403, cross-site 403, GET-on-refresh 405) and
+  the 60-second probe join;
+- persistence across a restart, and the host entry point registering / unregistering both routes.
+
 ## Known limitations
 
 - Hiding dsh-usage's glance card relies on its own `data-dsh-plugin="usage"` / `data-dsh-part="foot-card"`
   attributes. If it renames them, both cards appear (nothing breaks).
 - The primary source is the API key's balance probe, so the number belongs to **the DeepSeek account that
-  key belongs to**; swapping the key changes the number.
+  key belongs to**; swapping the key changes the number. A profile with no DeepSeek credential has no probe
+  and falls back to the `account` endpoint.
+- A route whose configured `baseURL` points somewhere other than `api.deepseek.com` is deliberately **not**
+  probed with the official endpoint; it reports the balance as unsupported instead of showing another
+  account's money.
+- Cost is priced for DeepSeek official routes only (the published CNY peak / off-peak table). A profile
+  reaching DeepSeek models through another provider — a DashScope-compatible route, for example — shows
+  tokens and calls but no cost.
+- With `@linxin666/dsh-usage` also installed, both plugins keep their own ledger, so the two numbers can
+  differ slightly: this card buckets days by Beijing date, dsh-usage by host-local date.
 - On this deployment the `account` fallback (browser sign-in) never returns a value, so the probe path is
   what actually runs. The fallback is kept for environments without a probe.
 - `CLIENT_VERSION` is a hard-coded constant; if DSH ever starts validating the version, it needs updating.

@@ -13,8 +13,9 @@
  *     wallet is formatted into the headline;
  *  4. the DeepSeek peak / off-peak clock is correct at the window boundaries,
  *     across nights, weekends and the Monday-morning gap, with a live countdown;
- *  5. today's ledger line is read from dsh-usage's overview, and the API-key
- *     balance probe is used only while the personal-account balance is missing.
+ *  5. today's ledger line comes from this plugin's own host route, with
+ *     @linxin666/dsh-usage's overview as the 404 fallback, and the API-key
+ *     balance probe outranks the personal-account Remote.
  *
  * Run with the DSH runtime's Node: `node test/verify.mjs`.
  */
@@ -157,7 +158,7 @@ assert.deepEqual(exported.inject, ['slots', 'locale', 'remote'], 'the three serv
 assert.equal(typeof exported.apply, 'function', 'exports.apply must be callable')
 
 /** Boot one plugin instance against stubbed account / usage sources. */
-async function boot({ getBalance, overview = OVERVIEW, active = 'zh-CN', accountService = true, usageStatus = 200 } = {}) {
+async function boot({ getBalance, overview = OVERVIEW, active = 'zh-CN', accountService = true, usageStatus = 200, overviewPaths } = {}) {
   const styles = []
   const seats = []
   const injectedNames = []
@@ -166,9 +167,12 @@ async function boot({ getBalance, overview = OVERVIEW, active = 'zh-CN', account
   globalThis.document = makeDocument(styles)
   globalThis.fetch = async (url, init) => {
     fetches.push({ url, method: init?.method ?? 'GET' })
+    const status = overviewPaths === undefined || overviewPaths === null
+      ? usageStatus
+      : (overviewPaths[url] ?? usageStatus)
     return {
-      ok: usageStatus >= 200 && usageStatus < 300,
-      status: usageStatus,
+      ok: status >= 200 && status < 300,
+      status,
       json: async () => overview,
     }
   }
@@ -325,7 +329,7 @@ refreshButton.props.onClick()
 await new Promise((resolve) => realSetTimeout(resolve, 5))
 assert.deepEqual(
   manual.fetches.filter((entry) => entry.method === 'POST'),
-  [{ url: 'api/dsh-usage/refresh', method: 'POST' }],
+  [{ url: 'api/dsh-account-glance/refresh', method: 'POST' }],
   'one click forces exactly one host probe cycle',
 )
 assert.equal(manual.identities.length, 0, 'a click does not touch the account Remote while a probe exists')
@@ -430,6 +434,19 @@ assert.match(renderText(noUsage), /今日用量不可用/, 'a missing usage host
 // A usage host that fails outright reads the same way.
 const badUsage = await boot({ usageStatus: 500 })
 assert.match(renderText(badUsage), /今日用量不可用/, 'a failing usage host reads as unavailable')
+
+// A host that has not remounted the new host half: this plugin's own route
+// 404s, so the card falls back to dsh-usage's overview and keeps its lines.
+const hostFallback = await boot({
+  overviewPaths: { 'api/dsh-account-glance/overview': 404, 'api/dsh-usage/overview': 200 },
+})
+assert.deepEqual(
+  hostFallback.fetches.map((entry) => entry.url),
+  ['api/dsh-account-glance/overview', 'api/dsh-usage/overview'],
+  'a missing own host route falls back to the dsh-usage overview',
+)
+assert.match(renderText(hostFallback), /今日 ¥1\.82 · 12\.3k tokens · 42 次/, 'the fallback source still renders the ledger line')
+assert.match(renderText(hostFallback), /个人账户¥9\.99/, 'the fallback probe still carries the headline')
 
 // An empty day reports no usage rather than a zero-cost line.
 const emptyDay = await boot({
