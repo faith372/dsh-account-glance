@@ -48,7 +48,7 @@ dsh plugin --profile desktop add link:./dsh-account-glance
   { "holidays": ["2027-01-01", "2027-02-05"] }
   ```
 
-  写到 `<DSH_HOME>/account-glance/holidays.json`，宿主启动时并入内置表（用 `{ "replace": true, "holidays": [...] }` 则替换内置表）。宿主读入后会把生效日历随 overview 下发给卡片，因此徽标与账本的成本列始终一致。
+  写到 `<DSH_HOME>/account-glance/holidays.json`，宿主启动时并入内置表（用 `{ "replace": true, "holidays": [...] }` 则替换内置表——此时文件里必须列出你需要的全部日期，包括包里已有的年份）。宿主读入后会把生效日历随 overview 下发给卡片，因此徽标与账本的成本列始终一致。
 - `@linxin666/dsh-usage` 是**可选**的：装了也不会冲突——本卡仍然优先读自己的路由，它的速览卡继续被隐藏，设置页与用量统计照常可用。
 
 探测本身是只读的账户查询：不带 prompt、不产生 token、不扣额度。

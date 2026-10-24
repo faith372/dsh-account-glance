@@ -70,7 +70,8 @@ Both data sources live in this plugin's own host half and are served over loopba
   ```
 
   Written to `<DSH_HOME>/account-glance/holidays.json` it is merged into the built-in table at startup
-  (`{ "replace": true, "holidays": [...] }` swaps the built-in table out instead). The host applies it
+  (`{ "replace": true, "holidays": [...] }` swaps the built-in table out instead — a replace file must
+  then list every date you still need, including years the package already ships). The host applies it
   and serves the effective calendar to the card, so the badge and the ledger's cost column always agree.
 - `@linxin666/dsh-usage` is **optional**: install it and nothing breaks — this card still reads its own
   route first, its glance card stays hidden, and its settings and usage pages keep working.
