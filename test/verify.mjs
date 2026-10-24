@@ -373,6 +373,7 @@ const CLOCK_CASES = [
   { at: '2026-10-09T17:59:30+08:00', badge: '峰时 · 原价', countdown: '距转谷 30 秒', why: 'last half minute of the peak window' },
   { at: '2026-10-10T10:00:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 47 小时 0 分', why: 'weekend waits for Monday 09:00' },
   { at: '2026-10-06T10:00:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 47 小时 0 分', why: 'statutory holiday: the whole day is off-peak' },
+  { at: '2027-02-08T10:00:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 167 小时 0 分', why: '2027 Spring Festival: the countdown spans the whole break' },
   { at: '2026-10-12T08:00:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 1 小时 0 分', why: 'pre-open Monday' },
 ]
 for (const testCase of CLOCK_CASES) {
@@ -382,6 +383,17 @@ for (const testCase of CLOCK_CASES) {
   assert.match(rendered, new RegExp(testCase.badge.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), testCase.at + ' (' + testCase.why + '): badge')
   assert.match(rendered, new RegExp(testCase.countdown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), testCase.at + ' (' + testCase.why + '): countdown')
 }
+
+// The host's calendar reaches the card: a date the host calls a holiday renders
+// off-peak even though the bundle's built-in table stops at an earlier year.
+const servedHoliday = await boot({
+  overview: { providers: [], usage: OVERVIEW.usage, billing: { holidays: ['2027-01-05'] } },
+})
+Date.now = () => Date.parse('2027-01-05T10:00:00+08:00')
+const servedText = textOf(servedHoliday.seats[0].component({ ...share, wide: true }))
+assert.match(servedText, /谷时 · 5 折/, 'a host-supplied holiday renders off-peak')
+assert.match(servedText, /距转峰 23 小时 0 分/, 'the countdown skips to the next weekday window')
+Date.now = () => FROZEN
 
 /* ------------------------------------------------------------------ *
  * 4. Degraded sources

@@ -42,6 +42,13 @@ dsh plugin --profile desktop add link:./dsh-account-glance
 - **余额**：`GET https://api.deepseek.com/user/balance`，Key 按「pi-ai 记录 → 配置的 env 引用 → 环境变量」顺序解析。没有探测值时回退到 `account` Remote（设置 → 账号与余额）。`baseURL` 指向转售商的 route 会显示为「不支持余额」，而不是拿官方端点去探；探测失败会保留上一个好数字并标出错误。
 - **今日用量**：折叠 session 事件流，落在 `<DSH_HOME>/account-glance/ledger.json`（原子写、保留 180 天），**按北京日期分桶**。
 - **消费金额**只对 DeepSeek 官方路由计价，取自公开的 CNY 峰谷价表（flash 与 v4-pro 各用自己的行）；其它路由（例如 DashScope 兼容 provider）照常统计 tokens 与次数，金额为 0，因此混合账本不会把两种货币加在一起。
+- **节假日**：官方把中国法定节假日整天按谷时计费。内置表含 2026 年官方数据与 2027 年推算数据；新年份不必等发版，只需在数据目录里放一个文件：
+
+  ```json
+  { "holidays": ["2027-01-01", "2027-02-05"] }
+  ```
+
+  写到 `<DSH_HOME>/account-glance/holidays.json`，宿主启动时并入内置表（用 `{ "replace": true, "holidays": [...] }` 则替换内置表）。宿主读入后会把生效日历随 overview 下发给卡片，因此徽标与账本的成本列始终一致。
 - `@linxin666/dsh-usage` 是**可选**的：装了也不会冲突——本卡仍然优先读自己的路由，它的速览卡继续被隐藏，设置页与用量统计照常可用。
 
 探测本身是只读的账户查询：不带 prompt、不产生 token、不扣额度。
@@ -60,7 +67,7 @@ npm test    # 等价于 node test/verify.mjs && node test/host-verify.mjs
 - 余额属于当前 Key 所属的 DeepSeek 账户，换 Key 就会换数字。
 - 只有 DeepSeek 官方路由会出金额，其它路由只有 tokens 与调用次数。
 - 同时装了 dsh-usage 时两份账本各自统计（本卡按北京日期分桶，它按宿主本地日期分桶），数字可能略有差异。
-- 节假日表维护到 2026 年（国办发明电〔2025〕7号）；之后的年份在补表之前按普通工作日处理。
+- 内置表里 2026 年是官方原文（国办发明电〔2025〕7号），**2027 年是推算值**（法定节日按农历计算、调休按 2025/2026 口径），官方通知发布后可能有出入；改包或用 `holidays.json` 按 profile 修正均可（见上）。
 - 侧栏折叠为 56px 轨时卡片隐藏（与外壳自己的底部区域一致）。
 
 ## 许可证

@@ -61,6 +61,17 @@ Both data sources live in this plugin's own host half and are served over loopba
 - **Cost** is priced for DeepSeek official routes only, from the published CNY peak / off-peak table
   (flash and v4-pro each on their own row). Other routes — a DashScope-compatible provider, for
   example — still count tokens and calls, at cost 0, so a mixed ledger never sums two currencies.
+- **Holidays** — the official schedule bills Chinese public holidays as whole off-peak days. The table
+  ships 2026 from the official notice and 2027 derived; a later year needs no release, only a file in the
+  data directory:
+
+  ```json
+  { "holidays": ["2027-01-01", "2027-02-05"] }
+  ```
+
+  Written to `<DSH_HOME>/account-glance/holidays.json` it is merged into the built-in table at startup
+  (`{ "replace": true, "holidays": [...] }` swaps the built-in table out instead). The host applies it
+  and serves the effective calendar to the card, so the badge and the ledger's cost column always agree.
 - `@linxin666/dsh-usage` is **optional**: install it and nothing breaks — this card still reads its own
   route first, its glance card stays hidden, and its settings and usage pages keep working.
 
@@ -87,8 +98,9 @@ the entry point.
 - Cost appears for DeepSeek official routes only; other routes show tokens and calls without an amount.
 - With dsh-usage installed too, both plugins keep their own ledger (this one buckets days by Beijing date,
   dsh-usage by host-local date), so the two totals can differ slightly.
-- The holiday table is maintained through 2026 (国办发明电〔2025〕7号); a later year is treated as an
-  ordinary weekday until the table is extended.
+- The built-in holiday table quotes 2026 (国办发明电〔2025〕7号) and **derives** 2027 — the statutory dates
+  come from the lunar calendar, the bridge days follow the 2025/2026 pattern — so 2027 can shift when the
+  official notice lands. Correct it in the package, or per profile through `holidays.json` (see above).
 - The card hides while the sidebar is collapsed to its 56 px rail, matching the shell's own foot area.
 
 ## License

@@ -20,7 +20,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -39,6 +39,7 @@ process.env.DSH_HOME = DSH_HOME
 const { apply } = await import(new URL('../lib/index.js', import.meta.url).href)
 const { AccountGlanceService } = await import(new URL('../lib/host/service.js', import.meta.url).href)
 const { beijingDateKey, deepseekModelSpend, deepseekPeriodAt, isDeepSeekRoute, isPublicHoliday } = await import(new URL('../lib/host/pricing.js', import.meta.url).href)
+const { BUILTIN_HOLIDAYS, holidayDates, loadHolidayOverride, resetHolidays } = await import(new URL('../lib/host/holidays.js', import.meta.url).href)
 const { createLedgerDocument, deserializeLedger, emptyTotals, foldUsage, pruneLedger, summarizeDays, totalTokens } = await import(new URL('../lib/host/ledger.js', import.meta.url).href)
 const { balanceAppliesToRoute, listDeepSeekRoutes, probeBalance, resolveCredential, routeBaseUrl } = await import(new URL('../lib/host/probe.js', import.meta.url).href)
 const { makeOverviewRoute, makeRefreshRoute } = await import(new URL('../lib/host/routes.js', import.meta.url).href)
@@ -157,8 +158,33 @@ const springFestival = deepseekPeriodAt(Date.parse('2026-02-17T10:00:00+08:00'))
 assert.equal(springFestival.peak, false, 'the Spring Festival break is off-peak all day')
 assert.equal(springFestival.boundaryMs, Date.parse('2026-02-24T09:00:00+08:00'), 'the countdown lands on the first working day after the break')
 assert.equal(deepseekPeriodAt(Date.parse('2026-02-28T10:00:00+08:00')).peak, false, 'a make-up working Saturday stays off-peak')
-// The table stops at 2026; a later year keeps the weekday rule until extended.
-assert.equal(deepseekPeriodAt(Date.parse('2027-01-05T10:00:00+08:00')).peak, true, 'an uncovered year falls back to the weekday rule')
+// The 2027 rows are provisional: statutory dates come from the lunar calendar,
+// bridge days from the 2025/2026 pattern. A weekday outside the table keeps the
+// plain weekday rule.
+assert.equal(isPublicHoliday(Date.parse('2027-02-08T10:00:00+08:00')), true, '2027 正月初二 is a holiday')
+assert.equal(deepseekPeriodAt(Date.parse('2027-02-08T10:00:00+08:00')).peak, false, 'the 2027 Spring Festival break is off-peak')
+assert.equal(deepseekPeriodAt(Date.parse('2027-06-09T10:00:00+08:00')).peak, false, '2027 端午 is off-peak')
+assert.equal(deepseekPeriodAt(Date.parse('2027-09-15T10:00:00+08:00')).peak, false, '2027 中秋 is off-peak')
+assert.equal(deepseekPeriodAt(Date.parse('2027-02-15T10:00:00+08:00')).peak, true, 'the Monday after the 2027 break is peak again')
+assert.equal(deepseekPeriodAt(Date.parse('2027-01-05T10:00:00+08:00')).peak, true, 'a 2027 weekday outside the table keeps the weekday rule')
+
+// A profile supplies the next year's notice through its data directory, so a new
+// year needs no release. The file is additive; `replace` swaps the built-in table.
+const holidayDir = join(DSH_HOME, 'account-glance')
+mkdirSync(holidayDir, { recursive: true })
+writeFileSync(join(holidayDir, 'holidays.json'), JSON.stringify({ holidays: ['2027-01-05', '2027-01-01', 'not-a-date', '2027-13-40', 7] }))
+const override = loadHolidayOverride(holidayDir)
+assert.equal(override.added, 2, 'only the two usable dates are applied')
+assert.equal(deepseekPeriodAt(Date.parse('2027-01-05T10:00:00+08:00')).peak, false, 'a supplied date is off-peak')
+assert.equal(deepseekPeriodAt(Date.parse('2026-10-06T10:00:00+08:00')).peak, false, 'the built-in calendar survives an additive file')
+assert.deepEqual(holidayDates(), [...new Set([...BUILTIN_HOLIDAYS, '2027-01-01', '2027-01-05'])].sort(), 'the calendar in effect is what the card receives')
+writeFileSync(join(holidayDir, 'holidays.json'), JSON.stringify({ replace: true, holidays: ['2027-01-05'] }))
+loadHolidayOverride(holidayDir)
+assert.equal(deepseekPeriodAt(Date.parse('2026-10-06T10:00:00+08:00')).peak, true, 'replace drops the built-in dates')
+writeFileSync(join(holidayDir, 'holidays.json'), '{ this is not json')
+assert.equal(loadHolidayOverride(holidayDir).added, 0, 'a malformed file is ignored instead of breaking the clock')
+resetHolidays()
+assert.equal(deepseekPeriodAt(Date.parse('2027-01-05T10:00:00+08:00')).peak, true, 'reset restores the built-in calendar')
 
 assert.equal(beijingDateKey(Date.parse('2026-10-13T23:30:00+08:00')), '2026-10-13', 'day keys follow Beijing time, not the host clock')
 assert.equal(beijingDateKey(Date.parse('2026-10-13T00:30:00+08:00')), '2026-10-13', 'just after Beijing midnight is the new day')
@@ -303,6 +329,7 @@ assert.deepEqual(
 assert.equal(probed.usage.today.date, beijingDateKey(realNow()), "today's bucket is keyed by the Beijing date")
 assert.deepEqual(probed.usage.today.totals, emptyTotals(), 'a fresh ledger starts at zero')
 assert.deepEqual(probed.usage.days, [], 'a fresh ledger has no trend days')
+assert.ok(Array.isArray(probed.billing?.holidays) && probed.billing.holidays.length > 0, 'the overview carries the holiday calendar the card clocks with')
 
 const session = {}
 Date.now = () => PEAK_AT
