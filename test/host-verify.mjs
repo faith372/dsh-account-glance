@@ -38,7 +38,7 @@ process.env.DSH_HOME = DSH_HOME
 
 const { apply } = await import(new URL('../lib/index.js', import.meta.url).href)
 const { AccountGlanceService } = await import(new URL('../lib/host/service.js', import.meta.url).href)
-const { beijingDateKey, deepseekModelSpend, deepseekPeriodAt, isDeepSeekRoute } = await import(new URL('../lib/host/pricing.js', import.meta.url).href)
+const { beijingDateKey, deepseekModelSpend, deepseekPeriodAt, isDeepSeekRoute, isPublicHoliday } = await import(new URL('../lib/host/pricing.js', import.meta.url).href)
 const { createLedgerDocument, deserializeLedger, emptyTotals, foldUsage, pruneLedger, summarizeDays, totalTokens } = await import(new URL('../lib/host/ledger.js', import.meta.url).href)
 const { balanceAppliesToRoute, listDeepSeekRoutes, probeBalance, resolveCredential, routeBaseUrl } = await import(new URL('../lib/host/probe.js', import.meta.url).href)
 const { makeOverviewRoute, makeRefreshRoute } = await import(new URL('../lib/host/routes.js', import.meta.url).href)
@@ -134,26 +134,39 @@ function makeRes() {
  * 1. Pricing clock and price book
  * ------------------------------------------------------------------ */
 
-const PEAK_AT = Date.parse('2026-10-06T10:00:00+08:00')
-const OFF_PEAK_AT = Date.parse('2026-10-06T23:00:00+08:00')
+const PEAK_AT = Date.parse('2026-10-13T10:00:00+08:00')
+const OFF_PEAK_AT = Date.parse('2026-10-13T23:00:00+08:00')
 
 const peak = deepseekPeriodAt(PEAK_AT)
 assert.equal(peak.peak, true, 'Tuesday 10:00 Beijing is peak')
-assert.equal(peak.boundaryMs, Date.parse('2026-10-06T12:00:00+08:00'), 'the peak period ends at the window close')
+assert.equal(peak.boundaryMs, Date.parse('2026-10-13T12:00:00+08:00'), 'the peak period ends at the window close')
 const offPeak = deepseekPeriodAt(OFF_PEAK_AT)
 assert.equal(offPeak.peak, false, 'Tuesday 23:00 Beijing is off-peak')
-assert.equal(offPeak.boundaryMs, Date.parse('2026-10-07T09:00:00+08:00'), 'off-peak waits for the next morning window')
+assert.equal(offPeak.boundaryMs, Date.parse('2026-10-14T09:00:00+08:00'), 'off-peak waits for the next morning window')
 const weekend = deepseekPeriodAt(Date.parse('2026-10-10T10:00:00+08:00'))
 assert.equal(weekend.peak, false, 'Saturday is off-peak all day')
 assert.equal(deepseekPeriodAt(Date.parse('2026-10-09T17:59:30+08:00')).peak, true, 'the last half minute of a window is still peak')
 
-assert.equal(beijingDateKey(Date.parse('2026-10-06T23:30:00+08:00')), '2026-10-06', 'day keys follow Beijing time, not the host clock')
-assert.equal(beijingDateKey(Date.parse('2026-10-06T00:30:00+08:00')), '2026-10-06', 'just after Beijing midnight is the new day')
+// Statutory holidays bill the whole day off-peak, and the countdown skips them.
+const nationalDay = deepseekPeriodAt(Date.parse('2026-10-06T10:00:00+08:00'))
+assert.equal(nationalDay.peak, false, 'Tuesday 10:00 inside the National Day break is off-peak')
+assert.equal(nationalDay.boundaryMs, Date.parse('2026-10-08T09:00:00+08:00'), 'the countdown skips the remaining holiday days')
+assert.equal(isPublicHoliday(Date.parse('2026-10-06T10:00:00+08:00')), true, 'a National Day date is a holiday')
+assert.equal(isPublicHoliday(PEAK_AT), false, 'an ordinary Tuesday is not a holiday')
+const springFestival = deepseekPeriodAt(Date.parse('2026-02-17T10:00:00+08:00'))
+assert.equal(springFestival.peak, false, 'the Spring Festival break is off-peak all day')
+assert.equal(springFestival.boundaryMs, Date.parse('2026-02-24T09:00:00+08:00'), 'the countdown lands on the first working day after the break')
+assert.equal(deepseekPeriodAt(Date.parse('2026-02-28T10:00:00+08:00')).peak, false, 'a make-up working Saturday stays off-peak')
+// The table stops at 2026; a later year keeps the weekday rule until extended.
+assert.equal(deepseekPeriodAt(Date.parse('2027-01-05T10:00:00+08:00')).peak, true, 'an uncovered year falls back to the weekday rule')
+
+assert.equal(beijingDateKey(Date.parse('2026-10-13T23:30:00+08:00')), '2026-10-13', 'day keys follow Beijing time, not the host clock')
+assert.equal(beijingDateKey(Date.parse('2026-10-13T00:30:00+08:00')), '2026-10-13', 'just after Beijing midnight is the new day')
 
 const millionInput = { ...emptyTotals(), inputTokens: 1_000_000, calls: 1 }
 assert.equal(deepseekModelSpend('deepseek-v4.1-flash', millionInput, PEAK_AT), 2, 'a million peak input tokens cost CNY 2')
 assert.equal(deepseekModelSpend('deepseek-v4.1-flash', millionInput, OFF_PEAK_AT), 1, 'the same call off-peak is half price')
-assert.equal(deepseekModelSpend('deepseek-v4-pro', millionInput, PEAK_AT), 2, 'v4-pro folds into the flash row from 2026-09-14')
+assert.equal(deepseekModelSpend('deepseek-v4-pro', millionInput, PEAK_AT), 9, 'v4-pro keeps its own published row')
 assert.equal(isDeepSeekRoute('deepseek-official'), true, 'the official route is a DeepSeek route')
 assert.equal(isDeepSeekRoute('ali'), false, 'a DashScope-compatible route is not')
 
@@ -165,21 +178,21 @@ const doc = createLedgerDocument()
 const oneCall = { ...emptyTotals(), inputTokens: 1_000, outputTokens: 100, calls: 1, cost: 0.5 }
 foldUsage(doc, PEAK_AT, 'deepseek-official', 'deepseek-v4.1-flash', oneCall)
 foldUsage(doc, PEAK_AT + 60_000, 'deepseek-official', 'deepseek-v4.1-flash', oneCall)
-assert.equal(doc.days['2026-10-06']['deepseek-official']['deepseek-v4.1-flash'].inputTokens, 2_000, 'folds accumulate')
-const folded = summarizeDays([doc.days['2026-10-06']])
+assert.equal(doc.days['2026-10-13']['deepseek-official']['deepseek-v4.1-flash'].inputTokens, 2_000, 'folds accumulate')
+const folded = summarizeDays([doc.days['2026-10-13']])
 assert.equal(folded.totals.calls, 2, 'two calls are summarized')
 assert.equal(folded.totals.cost, 1, 'costs sum')
 assert.equal(totalTokens(folded.totals), 2_200, 'total tokens count billed input plus output')
 
 foldUsage(doc, PEAK_AT, '__proto__', 'deepseek-v4.1-flash', oneCall)
 foldUsage(doc, PEAK_AT, 'deepseek-official', 'constructor', oneCall)
-assert.equal(summarizeDays([doc.days['2026-10-06']]).totals.calls, 2, 'prototype-named buckets are refused')
+assert.equal(summarizeDays([doc.days['2026-10-13']]).totals.calls, 2, 'prototype-named buckets are refused')
 assert.equal(Object.keys(doc.days).length, 1, 'a refused fold creates no day')
 
 foldUsage(doc, Date.parse('2026-01-05T10:00:00+08:00'), 'deepseek-official', 'deepseek-v4.1-flash', oneCall)
 assert.equal(Object.keys(doc.days).length, 2, 'an older day lands in its own bucket')
-assert.equal(pruneLedger(doc, '2026-10-06', 180), 1, 'retention drops the day outside the window')
-assert.deepEqual(Object.keys(doc.days), ['2026-10-06'], 'only the retained day survives')
+assert.equal(pruneLedger(doc, '2026-10-13', 180), 1, 'retention drops the day outside the window')
+assert.deepEqual(Object.keys(doc.days), ['2026-10-13'], 'only the retained day survives')
 
 const revived = deserializeLedger(JSON.parse(JSON.stringify(doc)))
 assert.deepEqual(revived.days, doc.days, 'a ledger round-trips through JSON')
@@ -187,12 +200,12 @@ const junk = deserializeLedger({
   days: {
     '9999-99-99': { provider: { model: { inputTokens: 5 } } },
     '2026-02-30': { provider: { model: { inputTokens: 5 } } },
-    '2026-10-06': { provider: { model: { inputTokens: 7, calls: 'nope', cost: 'x' } } },
+    '2026-10-13': { provider: { model: { inputTokens: 7, calls: 'nope', cost: 'x' } } },
   },
 })
-assert.deepEqual(Object.keys(junk.days), ['2026-10-06'], 'impossible and rollover dates are rejected')
-assert.equal(junk.days['2026-10-06'].provider.model.inputTokens, 7, 'a usable row survives')
-assert.equal(junk.days['2026-10-06'].provider.model.calls, 0, 'non-numeric counters are coerced')
+assert.deepEqual(Object.keys(junk.days), ['2026-10-13'], 'impossible and rollover dates are rejected')
+assert.equal(junk.days['2026-10-13'].provider.model.inputTokens, 7, 'a usable row survives')
+assert.equal(junk.days['2026-10-13'].provider.model.calls, 0, 'non-numeric counters are coerced')
 assert.deepEqual(deserializeLedger(null).days, {}, 'a corrupt document reads as empty')
 assert.deepEqual(deserializeLedger({ days: 'nope' }).days, {}, 'an unreadable days map reads as empty')
 
@@ -300,7 +313,7 @@ assert.equal(peakDay.totals.calls, 1, 'one usage-reporting message is one call')
 assert.equal(peakDay.totals.inputTokens, 1_000_000, 'the tokens are folded')
 assert.equal(peakDay.totals.cost, 2, 'a DeepSeek call is priced at the peak column')
 assert.equal(peakDay.providers[0].provider, 'deepseek-official', "today's provider summary names the route")
-assert.deepEqual(service.overview().usage.days.map((day) => day.date), ['2026-10-06'], 'the folded day appears in the trend window')
+assert.deepEqual(service.overview().usage.days.map((day) => day.date), ['2026-10-13'], 'the folded day appears in the trend window')
 
 Date.now = () => OFF_PEAK_AT
 ctx.emit('session/event', session, { type: 'assistant/message', data: { usage: { inputTokens: 1_000_000, outputTokens: 0 } } })

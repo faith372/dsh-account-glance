@@ -12,7 +12,8 @@
  *  3. the account Remote is called with a well-formed client identity and its
  *     wallet is formatted into the headline;
  *  4. the DeepSeek peak / off-peak clock is correct at the window boundaries,
- *     across nights, weekends and the Monday-morning gap, with a live countdown;
+ *     across nights, weekends, statutory holidays and the Monday-morning gap,
+ *     with a live countdown;
  *  5. today's ledger line comes from this plugin's own host route, with
  *     @linxin666/dsh-usage's overview as the 404 fallback, and the API-key
  *     balance probe outranks the personal-account Remote.
@@ -40,7 +41,7 @@ const OVERVIEW = {
   ],
   usage: {
     today: {
-      date: '2026-10-06',
+      date: '2026-10-13',
       totals: { inputTokens: 12_345, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, calls: 42, cost: 1.82 },
       providers: [],
     },
@@ -286,7 +287,7 @@ assert.deepEqual(first.intervals, [60000], 'the card arms one 60 s cadence, matc
  * ------------------------------------------------------------------ */
 
 const realNow = Date.now
-const FROZEN = Date.parse('2026-10-06T10:00:00+08:00')
+const FROZEN = Date.parse('2026-10-13T10:00:00+08:00')
 Date.now = () => FROZEN
 
 const element = seat.component({ ...share, wide: true })
@@ -366,11 +367,12 @@ assert.match(renderText(accountPath), /个人账户¥11\.74/, 'the account walle
  * ------------------------------------------------------------------ */
 
 const CLOCK_CASES = [
-  { at: '2026-10-06T10:00:00+08:00', badge: '峰时 · 原价', countdown: '距转谷 2 小时 0 分', why: 'inside the morning window' },
-  { at: '2026-10-06T12:30:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 1 小时 30 分', why: 'lunch gap' },
-  { at: '2026-10-06T20:00:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 13 小时 0 分', why: 'overnight' },
+  { at: '2026-10-13T10:00:00+08:00', badge: '峰时 · 原价', countdown: '距转谷 2 小时 0 分', why: 'inside the morning window' },
+  { at: '2026-10-13T12:30:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 1 小时 30 分', why: 'lunch gap' },
+  { at: '2026-10-13T20:00:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 13 小时 0 分', why: 'overnight' },
   { at: '2026-10-09T17:59:30+08:00', badge: '峰时 · 原价', countdown: '距转谷 30 秒', why: 'last half minute of the peak window' },
   { at: '2026-10-10T10:00:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 47 小时 0 分', why: 'weekend waits for Monday 09:00' },
+  { at: '2026-10-06T10:00:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 47 小时 0 分', why: 'statutory holiday: the whole day is off-peak' },
   { at: '2026-10-12T08:00:00+08:00', badge: '谷时 · 5 折', countdown: '距转峰 1 小时 0 分', why: 'pre-open Monday' },
 ]
 for (const testCase of CLOCK_CASES) {
@@ -450,7 +452,7 @@ assert.match(renderText(hostFallback), /个人账户¥9\.99/, 'the fallback prob
 
 // An empty day reports no usage rather than a zero-cost line.
 const emptyDay = await boot({
-  overview: { providers: [], usage: { today: { date: '2026-10-06', totals: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, calls: 0, cost: 0 }, providers: [] }, days: [] } },
+  overview: { providers: [], usage: { today: { date: '2026-10-13', totals: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, calls: 0, cost: 0 }, providers: [] }, days: [] } },
 })
 assert.match(renderText(emptyDay), /今日暂无用量/, 'a day without calls reports no usage')
 
@@ -458,7 +460,7 @@ assert.match(renderText(emptyDay), /今日暂无用量/, 'a day without calls re
 const stringCost = await boot({
   overview: {
     providers: OVERVIEW.providers,
-    usage: { today: { date: '2026-10-06', totals: { ...OVERVIEW.usage.today.totals, cost: '1.82' }, providers: [] }, days: [] },
+    usage: { today: { date: '2026-10-13', totals: { ...OVERVIEW.usage.today.totals, cost: '1.82' }, providers: [] }, days: [] },
   },
 })
 assert.match(renderText(stringCost), /今日 ¥1\.82 · 12\.3k tokens · 42 次/, 'a string cost is coerced, not fatal')

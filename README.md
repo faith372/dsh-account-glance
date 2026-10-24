@@ -18,8 +18,9 @@ A three-line glance card for the DSH Web GUI, seated **directly above** the side
 | 3 | **Today's spend / tokens / calls**, plus a **manual refresh** button that forces one fresh probe |
 
 Peak / off-peak follows DeepSeek's official schedule (Beijing time, UTC+8 all year): **peak** is
-Monday–Friday `09:00–12:00` and `14:00–18:00` at full price, **every other hour** (nights and weekends
-included) is billed at **50% off**. The countdown switches to seconds for the final minute.
+Monday–Friday `09:00–12:00` and `14:00–18:00` at full price, **every other hour** (nights and weekends)
+plus **every Chinese statutory public holiday in full** is billed at **50% off**. The countdown switches
+to seconds for the final minute.
 
 ## Install
 
@@ -35,8 +36,9 @@ the source at `<profile>\plugins\dsh-account-glance\`, add the package to both `
 `dsh.profile.bundles`, then link it into `node_modules` (or run `pnpm install`). Do **not** add
 `account-glance` to `cordis.patch.yml` yourself — the package ships that row.
 
-**Upgrading from 1.3.x:** the host half is new, so restart DSH (or toggle this row off and on in the
-Plugins page) and refresh the page once.
+**Upgrading from 1.4.x:** the clock and price book changed (statutory holidays, v4-pro pricing), so
+restart DSH (or toggle this row off and on in the Plugins page) and refresh the page once. From 1.3.x it
+is the same step — 1.4.0 introduced the host half.
 
 ## Turning it on and off
 
@@ -56,9 +58,9 @@ Both data sources live in this plugin's own host half and are served over loopba
   flags the row.
 - **Today's usage** — folded from the session event stream into a small per-day ledger at
   `<DSH_HOME>/account-glance/ledger.json` (atomic write, 180-day retention), keyed by **Beijing date**.
-- **Cost** is priced for DeepSeek official routes only (the published CNY peak / off-peak table). Other
-  routes — a DashScope-compatible provider, for example — still count tokens and calls, at cost 0, so a
-  mixed ledger never sums two currencies.
+- **Cost** is priced for DeepSeek official routes only, from the published CNY peak / off-peak table
+  (flash and v4-pro each on their own row). Other routes — a DashScope-compatible provider, for
+  example — still count tokens and calls, at cost 0, so a mixed ledger never sums two currencies.
 - `@linxin666/dsh-usage` is **optional**: install it and nothing breaks — this card still reads its own
   route first, its glance card stays hidden, and its settings and usage pages keep working.
 
@@ -85,6 +87,8 @@ the entry point.
 - Cost appears for DeepSeek official routes only; other routes show tokens and calls without an amount.
 - With dsh-usage installed too, both plugins keep their own ledger (this one buckets days by Beijing date,
   dsh-usage by host-local date), so the two totals can differ slightly.
+- The holiday table is maintained through 2026 (国办发明电〔2025〕7号); a later year is treated as an
+  ordinary weekday until the table is extended.
 - The card hides while the sidebar is collapsed to its 56 px rail, matching the shell's own foot area.
 
 ## License
