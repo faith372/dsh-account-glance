@@ -59,7 +59,7 @@ dsh plugin --profile desktop add link:./dsh-account-glance
 npm test    # 等价于 node test/verify.mjs && node test/host-verify.mjs
 ```
 
-两套都离线运行。客户端套件执行交付产物 `lib/client.js`（座位与节奏、探测值压过 `account` 钱包、回退调用的身份字段、峰谷边界、15 秒超时、刷新按钮、各降级路径、回退读 dsh-usage）；宿主套件覆盖时钟与价表、账本、凭证解析与探测形态、异源防护、session 折叠、路由栅栏、重启后的持久化与入口注册。
+两套都离线运行。客户端套件执行交付产物 `lib/client.js`（座位与节奏、探测值压过 `account` 钱包、回退调用的身份字段、峰谷的 8 个边界场景（含法定节假日）、15 秒超时、刷新按钮、各降级路径、回退读 dsh-usage）；宿主套件覆盖时钟与价表——内置节假日表、2027 推算日期、以及 `holidays.json` 的追加/替换/畸形三种形态——外加账本、凭证解析与探测形态、异源防护、session 折叠、路由栅栏、重启后的持久化与入口注册。
 
 ## 已知限制
 

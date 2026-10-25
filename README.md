@@ -86,10 +86,11 @@ npm test    # node test/verify.mjs && node test/host-verify.mjs
 
 Both suites run offline. The client suite boots the shipped `lib/client.js` against React / DOM
 stand-ins: seat and cadence, the probe outranking the account wallet, the fallback identity, the peak
-clock's boundary cases, the 15-second deadline, the refresh button, the degradation paths, and the
-dsh-usage fallback. The host suite covers the clock and price book, the ledger, credential resolution
-and probe shapes, the origin guard, session folding, the route fence, persistence across a restart, and
-the entry point.
+clock's eight boundary cases (statutory holidays included), the 15-second deadline, the refresh button,
+the degradation paths, and the dsh-usage fallback. The host suite covers the clock and price book — the
+shipped holiday calendar, the 2027 derived dates, and the per-profile override in merge, replace and
+malformed form — plus the ledger, credential resolution and probe shapes, the origin guard, session
+folding, the route fence, persistence across a restart, and the entry point.
 
 ## Known limitations
 
